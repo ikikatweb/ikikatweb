@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
@@ -30,7 +31,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Pencil, Eye, MapPin, Calendar, User, ChevronUp, ChevronDown, FileDown, X,
+  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Wrench, Pencil, Eye, MapPin, Calendar, User, ChevronUp, ChevronDown, FileDown, X,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -190,6 +191,8 @@ export default function DashboardPage() {
   // Araç id → tahmini gösterge (son gerçek okuma + Arvento). Yaklaşan bakım kutusu bunu
   // kullanır; aksi hâlde donmuş göstergeyle "yaklaşan bakım yok" diyordu.
   const [tahminiGosterge, setTahminiGosterge] = useState<Record<string, TahminiGosterge>>({});
+  // Yaklaşan bakım satırında sağ tık menüsü ("Yeni bakım kaydı").
+  const [bakimMenu, setBakimMenu] = useState<{ x: number; y: number; aracId: string; plaka: string } | null>(null);
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -2257,7 +2260,15 @@ export default function DashboardPage() {
 
         {/* Widget: Yaklaşan Araç Bakımları */}
         {wg("yaklasan_bakim") ? <div className={`bg-white rounded-lg border p-4 lg:order-6 ${SPAN[bakimSpan]}`}>
-          <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
+          <div className="flex items-start justify-between gap-2">
+            <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
+            {/* Satır tıklaması kaldırıldığı için sayfaya giden tek yol bu bağlantı.
+                Gerçek <a>: sağ tık "yeni sekmede aç" ve orta tık çalışsın. */}
+            <Link href="/dashboard/arac-bakim" prefetch={false}
+              className="shrink-0 text-[11px] text-orange-700 hover:underline whitespace-nowrap mt-0.5">
+              Araç Bakım →
+            </Link>
+          </div>
           {yaklasanBakimlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bakım yok</p> : (
             <div className="max-h-[220px] overflow-y-auto">
               <Table noWrapper className="text-xs">
@@ -2281,11 +2292,24 @@ export default function DashboardPage() {
                     const kmGecti = b.kmFark != null && b.kmFark < 0;
                     const tarihGecti = b.kalanGun != null && b.kalanGun < 0;
                     const kritik = kmGecti || tarihGecti;
+                    // SOL TIK YOK: tablo okunurken istemeden tıklanıp Araç Bakım sayfasına
+                    // gidiliyordu. SAĞ TIK ise işe yarar: o araç için "Yeni bakım kaydı".
                     return (
                       <TableRow
                         key={b.id}
-                        className={`cursor-pointer ${kritik ? "bg-red-50 hover:bg-red-100" : "hover:bg-orange-50"}`}
-                        onClick={() => router.push("/dashboard/arac-bakim")}
+                        className={kritik ? "bg-red-50" : ""}
+                        onContextMenu={(e) => {
+                          if (!b.arac_id) return;
+                          // preventDefault: hem tarayıcı menüsü hem genel "Sayfayı Tanı" menüsü
+                          // açılmasın (o menü defaultPrevented olaya karışmıyor).
+                          e.preventDefault();
+                          setBakimMenu({
+                            x: Math.max(8, Math.min(e.clientX, window.innerWidth - 220)),
+                            y: Math.max(8, Math.min(e.clientY, window.innerHeight - 70)),
+                            aracId: b.arac_id,
+                            plaka: b.araclar?.plaka ?? "",
+                          });
+                        }}
                       >
                         <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{b.araclar?.plaka ?? "—"}</TableCell>
                         <TableCell className="px-2 truncate max-w-[140px] text-[11px]">
@@ -3832,6 +3856,35 @@ export default function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* YAKLAŞAN BAKIM — satır sağ tık menüsü. Sol tık bilerek yok (istemeden tıklanıp
+          sayfa değişiyordu); sağ tık o araç için doğrudan yeni bakım formunu açar. */}
+      {bakimMenu && (
+        <>
+          {/* Dışarı tıklayınca/kaydırınca kapansın */}
+          <div className="fixed inset-0 z-[190]" onClick={() => setBakimMenu(null)} onContextMenu={(e) => { e.preventDefault(); setBakimMenu(null); }} />
+          <div
+            className="fixed z-[200] rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
+            style={{ left: bakimMenu.x, top: bakimMenu.y, minWidth: 200 }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const id = bakimMenu.aracId;
+                setBakimMenu(null);
+                router.push(`/dashboard/arac-bakim?yeniBakim=${encodeURIComponent(id)}`);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#1E3A5F] hover:bg-slate-100"
+            >
+              <Wrench size={15} className="shrink-0 text-emerald-600" />
+              <span className="flex flex-col">
+                <span className="font-medium">Yeni bakım kaydı</span>
+                {bakimMenu.plaka && <span className="text-[11px] text-gray-500">{bakimMenu.plaka}</span>}
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

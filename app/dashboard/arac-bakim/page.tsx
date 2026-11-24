@@ -222,6 +222,18 @@ export default function AracBakimPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // ?yeniBakim=<arac_id> — ana ekrandaki "Yaklaşan Araç Bakımları" kutusunda sağ tık →
+  // "Yeni bakım kaydı" buraya yollar: form DOĞRUDAN o araçla açılır, kullanıcı listede
+  // aracı yeniden aramaz. Aşağıdaki kasa defteri bağlantısıyla aynı kalıp.
+  useEffect(() => {
+    const aracId = new URLSearchParams(window.location.search).get("yeniBakim");
+    if (!aracId) return;
+    dialogAc("bakim", aracId);
+    // Adres temizlenir: F5'te ya da bağlantı paylaşıldığında pencere tekrar açılmasın.
+    window.history.replaceState(null, "", "/dashboard/arac-bakim");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Kasa defterinden gelindiyse (?yeni=bakim|tamirat|yedek_parca&tutar&tarih&detay):
   // ilgili pencereyi ÖNCEDEN DOLDURARAK aç. Ödeme kasa üzerinden yapıldığı için
   // "ödemesi yapıldı" otomatik işaretli + ödeyen = giriş yapan kullanıcı. Araç elle seçilir.
@@ -379,10 +391,10 @@ export default function AracBakimPage() {
     return { sayi: filtrelenmis.length, toplamTutar, odenenTutar, odenmeyenTutar };
   }, [filtrelenmis]);
 
-  function dialogAc(tip: AracBakimTipi = "bakim") {
+  function dialogAc(tip: AracBakimTipi = "bakim", aracId = "") {
     setEditId(null);
     setDTip(tip);
-    setDAracId("");
+    setDAracId(aracId);
     setDTarih(new Date().toISOString().slice(0, 10));
     setDYaptiranId("");
     setDServisTamirci("");
