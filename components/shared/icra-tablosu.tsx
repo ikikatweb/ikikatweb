@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
+import { uploadDosyaImzali } from "@/lib/supabase/queries/upload";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Send } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
@@ -41,11 +43,13 @@ type IcraForm = {
   ucuncu_sahis: string; dosya_esas_no: string; gelen_yazi_tarihi: string; teblig_tarihi: string;
   alacakli_adi: string; alacakli_vergi_no: string; borclu_adi: string; borclu_tc_no: string;
   borc_miktari: string;
+  /** Fiziki posta ile gelen tebligatın yüklenen belgesi (depo yolu). UETS'ten gelende boş. */
+  belge_yolu: string;
 };
 const BOS_FORM: IcraForm = {
   ucuncu_sahis: "", dosya_esas_no: "", gelen_yazi_tarihi: "", teblig_tarihi: "",
   alacakli_adi: "", alacakli_vergi_no: "", borclu_adi: "", borclu_tc_no: "",
-  borc_miktari: "",
+  borc_miktari: "", belge_yolu: "",
 };
 
 // Türkçe büyük/küçük harf DUYARSIZ arama yapan açılır liste (native <datalist> İ/i eşleşmesini
@@ -144,6 +148,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     sureGun: null,
   }, false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // Fiziki tebligat belgesi yükleme (Gözat)
+  const belgeRef = useRef<HTMLInputElement>(null);
+  const [belgeYukleniyor, setBelgeYukleniyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
 
@@ -264,6 +271,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       setEditId(row.id);
       ilkForm = {
         ucuncu_sahis: row.ucuncu_sahis ?? "", dosya_esas_no: row.dosya_esas_no ?? "",
+        belge_yolu: row.belge_yolu ?? "",
         gelen_yazi_tarihi: row.gelen_yazi_tarihi ?? "", teblig_tarihi: row.teblig_tarihi ?? "",
         alacakli_adi: row.alacakli_adi ?? "", alacakli_vergi_no: row.alacakli_vergi_no ?? "",
         borclu_adi: row.borclu_adi ?? "", borclu_tc_no: row.borclu_tc_no ?? "",
@@ -307,6 +315,30 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const i = odak.indexOf(el);
     if (i >= 0 && i + 1 < odak.length) odak[i + 1].focus();
   }
+  /**
+   * Fiziki posta ile gelen tebligatı depoya yükler ve yolunu forma yazar.
+   *
+   * SESSİZ GEÇMEZ: yüklenemeyen belge maile de giremez; hata kullanıcıya söylenir
+   * ve alan boş kalır — "yükledim sandım, mail eksik gitti" durumu olmasın.
+   */
+  async function belgeYukle(secilenler: FileList | null) {
+    const dosya = Array.from(secilenler ?? [])[0];
+    if (!dosya) return;
+    setBelgeYukleniyor(true);
+    try {
+      const temizAd = dosya.name.replace(/[^\w.\-]+/g, "_");
+      const yol = await uploadDosyaImzali(dosya, "yazismalar",
+        `icra-tebligat/${editId ?? "yeni"}/${Date.now()}-${temizAd}`);
+      setF("belge_yolu", yol);
+      toast.success("Tebligat belgesi yüklendi.");
+    } catch (e) {
+      toast.error(`Belge yüklenemedi: ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: 9000 });
+    } finally {
+      setBelgeYukleniyor(false);
+      if (belgeRef.current) belgeRef.current.value = "";
+    }
+  }
+
   async function kaydet() {
     if (editId ? !canDuzenle : !canEkle) { toast.error("Yetkiniz yok."); return; }
     // Zorunlu alanlar
@@ -351,6 +383,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
     const payload: Partial<IcraKayit> = {
       ucuncu_sahis: t(form.ucuncu_sahis), dosya_esas_no: t(form.dosya_esas_no),
+      belge_yolu: t(form.belge_yolu),
       gelen_yazi_tarihi: form.gelen_yazi_tarihi || null, teblig_tarihi: form.teblig_tarihi || null,
       // AVUKAT KİPİNDE CEVAP TARİHİ YAZILMAZ: mail gidince sunucu yazar.
       cevap_sekli: t(cevap.cevap_sekli),
@@ -749,6 +782,41 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <label className={fLbl}>Tebliğ Tarihi <span className="text-red-500">*</span></label>
               <input type="date" disabled={kilitli} min={form.gelen_yazi_tarihi || undefined} className={`${fInp} ${kilitInp}`} value={form.teblig_tarihi} onChange={(e) => setF("teblig_tarihi", e.target.value)} />
             </div>
+            {/* FİZİKİ POSTA İLE GELEN TEBLİGAT — muhasebeye mail ek olmadan GİTMEZ.
+                UETS'ten gelen dosyada belge dosya esas no ile eşleşiyor; posta ile
+                gelende eşleşecek bir kayıt yok, o yüzden belge buradan yüklenir.
+                Yüklenen belge muhasebeye (ve gerekirse avukata) giden mailin ekidir. */}
+            <div className="sm:col-span-2">
+              <label className={fLbl}>
+                Tebligat Belgesi <span className="font-normal text-gray-400">— fiziki posta ile geldiyse</span>
+              </label>
+              {form.belge_yolu ? (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5">
+                  <a href={dosyaUrl(form.belge_yolu)} target="_blank" rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate text-xs text-emerald-800 hover:underline">
+                    📎 {form.belge_yolu.split("/").pop()}
+                  </a>
+                  {!kilitli && (
+                    <button type="button" onClick={() => setF("belge_yolu", "")}
+                      className="shrink-0 text-[11px] text-red-600 hover:underline">Kaldır</button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input ref={belgeRef} type="file" accept="application/pdf,image/*" className="hidden"
+                    onChange={(e) => belgeYukle(e.target.files)} />
+                  <button type="button" disabled={kilitli || belgeYukleniyor}
+                    onClick={() => belgeRef.current?.click()}
+                    className="h-9 px-3 rounded-lg border border-gray-300 bg-white text-xs text-[#1E3A5F] hover:bg-gray-50 disabled:opacity-50">
+                    {belgeYukleniyor ? "Yükleniyor…" : "Gözat"}
+                  </button>
+                  <span className="text-[11px] text-gray-400">
+                    UETS&apos;ten gelen dosyalarda gerekmez — belge tebligat kaydından bulunur.
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className={fLbl}>Borç Miktarı <span className="text-red-500">*</span></label>
               <input inputMode="decimal" readOnly={kilitli} className={`${fInp} text-right ${kilitInp}`} value={form.borc_miktari} onChange={(e) => setF("borc_miktari", formatParaInput(e.target.value))} placeholder="0" />

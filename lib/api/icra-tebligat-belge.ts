@@ -37,6 +37,12 @@ export async function icraTebligatBelgesi(
       return { hata: { kod: 400, mesaj: "Bu takipte tebligat belgesi bağlı değil — mail GÖNDERİLMEDİ. " + kimIcin } };
     }
     belge = { ad: yol.split("/").pop() || "odeme-emri.pdf", yol };
+  } else if ((kayit.belge_yolu ?? "").trim()) {
+    // ELLE YÜKLENEN BELGE ÖNCELİKLİ: fiziki posta ile gelen icra yazısının UETS'te
+    // karşılığı yok; kullanıcı belgeyi forma yüklediyse eşleştirme aranmaz, o dosya
+    // gönderilir. (sql/icra_belge_yolu.sql)
+    const yol = (kayit.belge_yolu ?? "").trim();
+    belge = { ad: yol.split("/").pop() || "tebligat.pdf", yol };
   } else {
     // icra kaydında tebligat bağlantısı yok; eşleştirme dosya esas numarası
     // üzerinden. Konu biçimi: "<Daire> [2024/57908] [...]" — numara köşeli
@@ -60,7 +66,8 @@ export async function icraTebligatBelgesi(
     if (!belge) {
       return { hata: { kod: 400,
         mesaj: `${kayit.dosya_esas_no} için tebligat belgesi panelde yok — mail GÖNDERİLMEDİ. `
-          + `Tebligatlar ekranından "Belgeleri getir" ile indirip tekrar deneyin.` } };
+          + `UETS'ten geldiyse Tebligatlar ekranından "Belgeleri getir" ile indirin; `
+          + `FİZİKİ POSTA ile geldiyse icra dosyasını düzenleyip "Tebligat belgesi" alanından yükleyin.` } };
     }
   }
 

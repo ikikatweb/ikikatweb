@@ -907,6 +907,10 @@ export type IcraKayit = {
   sira: number;
   ucuncu_sahis: string | null;
   dosya_esas_no: string | null;
+  /** Elle yüklenen tebligat belgesinin depo yolu — FİZİKİ POSTA ile gelen dosyalar için.
+   *  Doluysa UETS eşleştirmesi yapılmaz, muhasebeye/avukata bu belge gider.
+   *  (sql/icra_belge_yolu.sql · lib/api/icra-tebligat-belge) */
+  belge_yolu: string | null;
   gelen_yazi_tarihi: string | null;
   teblig_tarihi: string | null;
   cevap_tarihi: string | null;
