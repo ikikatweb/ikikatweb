@@ -21,7 +21,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { trAramaNormalize } from "@/lib/utils/isim";
-import type { TahminiGosterge } from "@/app/api/arac/tahmini-gosterge/route";
+import type { TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 

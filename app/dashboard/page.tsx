@@ -13,6 +13,7 @@ import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/sup
 import { policeTalepKonu, policeTalepGovde, policeTalepSablonCoz, type PoliceTalepSablon } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitDepoOzet, getSonYakitAlimlari, updateYakitAlim, type YakitDepoOzet } from "@/lib/supabase/queries/yakit";
+import type { TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
 import { getAtamaGecmisiTumu, getManuelGunler, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
@@ -186,6 +187,9 @@ export default function DashboardPage() {
   const [depoOzetVeri, setDepoOzetVeri] = useState<YakitDepoOzet[]>([]);
   // "Son yakıt alımları" listesi — sorguda sıralanıp sınırlanır, tüm zaman indirilmez.
   const [sonAlimVeri, setSonAlimVeri] = useState<YakitAlim[]>([]);
+  // Araç id → tahmini gösterge (son gerçek okuma + Arvento). Yaklaşan bakım kutusu bunu
+  // kullanır; aksi hâlde donmuş göstergeyle "yaklaşan bakım yok" diyordu.
+  const [tahminiGosterge, setTahminiGosterge] = useState<Record<string, TahminiGosterge>>({});
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -442,6 +446,20 @@ export default function DashboardPage() {
         setYaklasirGun(trafikGunVal);
         setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(String(kaskoGun[0])) || trafikGunVal) : trafikGunVal);
       } catch { /* sessiz */ }
+    })();
+
+    // Yaklaşan bakım kutusu için tahmini gösterge — AYRI istek: batch 1'in sorgularını
+    // beklemesin (oradaki tek yavaş sorgu bunu da geciktiriyordu).
+    // Alınamazsa kutu eski davranışına (kart değerine) döner; hata konsola yazılır.
+    (async () => {
+      if (!widgetGorunur("yaklasan_bakim")) return;
+      try {
+        const y = await fetch("/api/arac/tahmini-gosterge");
+        if (!y.ok) throw new Error(`sunucu ${y.status}`);
+        setTahminiGosterge((await y.json()) as Record<string, TahminiGosterge>);
+      } catch (e) {
+        console.error("Tahmini gösterge alınamadı, yaklaşan bakım kart değerine göre hesaplanacak:", e);
+      }
     })();
 
     // BACKGROUND BATCH 2: Yakıt + Evrak + Personel + Yi-ÜFE
@@ -899,7 +917,10 @@ export default function DashboardPage() {
     const bugunMs = new Date().setHours(0,0,0,0);
     const liste: (AracBakimWithArac & { kalanGun?: number; kmFark?: number; aracYakin?: boolean })[] = [];
     for (const b of sonBakim.values()) {
-      const guncelKm = b.araclar?.guncel_gosterge ?? null;
+      // Elle girilen gösterge donmuş olabilir; Araç Listesi ve bakım bildirimiyle AYNI
+      // tahmini değer kullanılır (lib/arac/tahmini-gosterge) — üç yerde üç ayrı sayı olmasın.
+      const tahmin = tahminiGosterge[b.arac_id];
+      const guncelKm = tahmin ? tahmin.tahmini : b.araclar?.guncel_gosterge ?? null;
       let kmFark: number | undefined;
       let kalanGun: number | undefined;
       if (b.sonraki_bakim_km != null && guncelKm != null) kmFark = b.sonraki_bakim_km - guncelKm;
@@ -916,7 +937,7 @@ export default function DashboardPage() {
       const yKey = Math.min(y.kalanGun ?? 1e9, y.kmFark ?? 1e9);
       return xKey - yKey;
     });
-  }, [aracBakimlar, araclar, isYonetici, kullanici]);
+  }, [aracBakimlar, araclar, isYonetici, kullanici, tahminiGosterge]);
 
   // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
   // TÜM ZAMAN verileri kullanılır (son 30 gün değil) + virman hareketleri dahil edilir
@@ -2252,7 +2273,10 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {yaklasanBakimlar.map((b) => {
-                    const guncelKm = b.araclar?.guncel_gosterge ?? null;
+                    // Durum sütunu tahmini değerden hesaplandığı için gösterilen sayı da o
+                    // olmalı; yoksa "11.138 km geçti" yazarken yanında eski rakam durur.
+                    const tahmin = tahminiGosterge[b.arac_id];
+                    const guncelKm = tahmin ? tahmin.tahmini : b.araclar?.guncel_gosterge ?? null;
                     const birim = b.araclar?.sayac_tipi === "saat" ? "sa" : "km"; // iş makinesi → saat, araç → km
                     const kmGecti = b.kmFark != null && b.kmFark < 0;
                     const tarihGecti = b.kalanGun != null && b.kalanGun < 0;
@@ -2268,7 +2292,11 @@ export default function DashboardPage() {
                           {[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}
                         </TableCell>
                         <TableCell className="px-2 text-right tabular-nums text-[11px]">
-                          {guncelKm != null ? guncelKm.toLocaleString("tr-TR") : "—"}
+                          {guncelKm == null ? "—" : tahmin ? (
+                            <span className="text-[#C2410C]" title={`Tahmini: ${formatTarih(tahmin.tabanTarih)} okumasındaki ${tahmin.taban.toLocaleString("tr-TR")} ${birim} + Arvento'dan ${tahmin.eklenen.toLocaleString("tr-TR")} ${birim}`}>
+                              ~{guncelKm.toLocaleString("tr-TR")}
+                            </span>
+                          ) : guncelKm.toLocaleString("tr-TR")}
                         </TableCell>
                         <TableCell className="px-2 text-right tabular-nums text-[11px]">
                           {b.sonraki_bakim_km != null ? b.sonraki_bakim_km.toLocaleString("tr-TR") : "—"}

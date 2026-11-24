@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { gorevAnahtariGecerli, yetkisiz } from "@/lib/api/guvenlik";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToYoneticiler } from "@/lib/push";
+import { tahminiGostergeler, type TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
 
 export async function GET(request: Request) {
   // Kapı AÇIK KALMAZ: eskiden "if (cronSecret && ...)" yazıyordu, yani CRON_SECRET ortamda
@@ -111,11 +112,22 @@ export async function GET(request: Request) {
     if (!mevcut || b.bakim_tarihi > mevcut.bakim_tarihi) sonBakim.set(b.arac_id, b);
   }
 
+  // GÖSTERGE: elle girilen değer donmuş olabilir (yakıt almayan araçta aylarca). Araç
+  // Listesi'ndeki sütunla AYNI hesap kullanılır, yoksa ekranda "500 km kaldı" yazarken
+  // bildirim hiç gitmiyordu. Hesap yapılamazsa eski davranış sürer (kart değeri).
+  let tahminler: Record<string, TahminiGosterge> = {};
+  try {
+    tahminler = await tahminiGostergeler(supabase);
+  } catch (e) {
+    console.error("[yaklasan-bildirim] tahmini gösterge hesaplanamadı, kart değerleri kullanılacak:", e);
+  }
+
   const yaklasanBakimlar: { plaka: string; sebep: string }[] = [];
   for (const b of sonBakim.values()) {
     const arac = Array.isArray(b.araclar) ? b.araclar[0] : b.araclar;
     if (!arac) continue;
-    const guncelKm = arac.guncel_gosterge;
+    const tahmin = tahminler[b.arac_id];
+    const guncelKm = tahmin ? tahmin.tahmini : arac.guncel_gosterge;
     let kmFark: number | undefined;
     let kalanGun: number | undefined;
     if (b.sonraki_bakim_km != null && guncelKm != null) kmFark = b.sonraki_bakim_km - guncelKm;
@@ -131,7 +143,12 @@ export async function GET(request: Request) {
     if (kmYaklasti || tarihYaklasti) {
       const sebepler: string[] = [];
       if (kmFark != null && kmFark <= sayacEsik) {
-        sebepler.push(kmFark < 0 ? `${Math.abs(kmFark).toLocaleString("tr-TR")} ${birim} geçti` : `${kmFark.toLocaleString("tr-TR")} ${birim} kaldı`);
+        // Gösterge tahminiyse bunu YAZ: "geçti" uyarısı gerçek okumaya değil hesaba dayanıyorsa
+        // kullanıcı önce göstergeyi kontrol etsin, boşuna servise yollamasın.
+        const ek = tahmin ? " (tahmini)" : "";
+        sebepler.push(kmFark < 0
+          ? `${Math.abs(kmFark).toLocaleString("tr-TR")} ${birim} geçti${ek}`
+          : `${kmFark.toLocaleString("tr-TR")} ${birim} kaldı${ek}`);
       }
       if (kalanGun != null && kalanGun <= 30) {
         sebepler.push(kalanGun < 0 ? `${Math.abs(kalanGun)} gün geçti` : `${kalanGun} gün kaldı`);
