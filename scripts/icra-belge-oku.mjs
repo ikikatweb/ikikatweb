@@ -52,6 +52,14 @@ export async function pdfMetni(kaynak) {
     if (!globalThis.Path2D && tuval.Path2D) globalThis.Path2D = tuval.Path2D;
   }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // İŞ PARÇACIĞI DOSYASI AÇIKÇA ÇAĞRILIYOR — aynı sebep (27.11.2026, üretimde
+  // yakalandı): pdfjs onu çalışma anında yol dizgisiyle yüklüyor, Vercel'in dosya
+  // izleyicisi böyle bir bağımlılığı göremiyor ve pdf.worker.mjs sunucu işlevine
+  // hiç girmiyordu — "Setting up fake worker failed: Cannot find module
+  // /var/task/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs". Buradaki açık
+  // import dosyanın pakete girmesini sağlıyor. (Node'da ayrı iş parçacığı
+  // başlatmıyor; pdfjs zaten aynı modülü "sahte işçi" olarak kullanıyor.)
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const veri = Buffer.isBuffer(kaynak) ? new Uint8Array(kaynak)
     : new Uint8Array(fs.readFileSync(kaynak));
   const belge = await pdfjs.getDocument({ data: veri, useSystemFonts: true }).promise;
