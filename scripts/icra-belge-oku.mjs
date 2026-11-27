@@ -37,6 +37,20 @@ export async function pdfMetni(kaynak) {
   // der — 27.11.2026'da tarayıcıda yakalandı. Bu yüzden next.config.ts'te
   // serverExternalPackages: ["pdfjs-dist"] var; paket node_modules'tan olduğu gibi
   // yükleniyor. O satır silinirse rota yine bu hatayı verir.
+  // DOMMatrix/Path2D NODE'DA YOK — pdfjs bunları @napi-rs/canvas'tan bekliyor.
+  // Paketi KENDİMİZ çağırıyoruz, pdfjs'in kendi aramasına bırakmıyoruz (27.11.2026,
+  // üretimde yakalandı): pdfjs onu try/catch içinde createRequire ile arıyor, bu
+  // yüzden Vercel'in dosya izleyicisi bağımlılığı göremiyor ve paket sunucu
+  // işlevine hiç girmiyor. Bulamayınca pdfjs "polyfill yapamadım" diye UYARIP
+  // devam ediyor, sonra modülün tepesindeki `new DOMMatrix()` satırında patlıyor:
+  // "ReferenceError: DOMMatrix is not defined". Yerelde görünmüyordu çünkü paket
+  // Windows ikilisiyle zaten kuruluydu. Buradaki açık import hem izleyiciye paketi
+  // gösteriyor hem de eksikse SESSİZ DEĞİL, anlaşılır bir hata veriyor.
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    const tuval = await import("@napi-rs/canvas");
+    globalThis.DOMMatrix = tuval.DOMMatrix;
+    if (!globalThis.Path2D && tuval.Path2D) globalThis.Path2D = tuval.Path2D;
+  }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const veri = Buffer.isBuffer(kaynak) ? new Uint8Array(kaynak)
     : new Uint8Array(fs.readFileSync(kaynak));
