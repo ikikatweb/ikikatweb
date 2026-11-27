@@ -31,6 +31,12 @@ export async function pdfMetni(kaynak) {
   // NİYE pdfjs: "pdftotext" harici bir program ve varsayılan kodlamasında Türkçe
   // harfler kayboluyor ("MÜHENDİSLİK" → "M?HENDSLK"). -enc UTF-8 ile düzeliyor ama
   // zamanlanmış görevin PATH'inde olmayabilir. pdfjs zaten projenin bağımlılığı.
+  // PAKETLENMEMESİ ŞART: bu modülü artık Next rotası da kullanıyor
+  // (app/api/icra/belge-oku). pdfjs sunucu paketine gömülürse iş parçacığı dosyasını
+  // (pdf.worker.mjs) kendi yanında arar, bulamaz ve "Setting up fake worker failed"
+  // der — 27.11.2026'da tarayıcıda yakalandı. Bu yüzden next.config.ts'te
+  // serverExternalPackages: ["pdfjs-dist"] var; paket node_modules'tan olduğu gibi
+  // yükleniyor. O satır silinirse rota yine bu hatayı verir.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const veri = Buffer.isBuffer(kaynak) ? new Uint8Array(kaynak)
     : new Uint8Array(fs.readFileSync(kaynak));

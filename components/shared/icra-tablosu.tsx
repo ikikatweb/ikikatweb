@@ -140,12 +140,22 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // çekilen dosya aynı avukata yeniden gönderilebilmeli.
   const gonderilecek = cevapKipi(cevap.cevap_sekli).avukat && Boolean(cevap.avukat_id)
     && !avukatCevabiDuruyor;
+  // BELGEDE YAZAN CEVAP SÜRESİ (gün). Yüklenen PDF okunduğunda doluyor; okunamazsa
+  // null kalır ve panel "varsayılan 7 gün" der (bkz. icra-dashboard). Formun görünür
+  // bir alanı YOK: bu bilgi belgeden gelir, elle uydurulmaz.
+  // DÜZENLEMEDE KAYITTAKİ DEĞERLE AÇILIR: aksi halde belge yeniden yüklenmeyen her
+  // kayıt kaydedilince okunmuş süre null'a döner, yani sessizce silinirdi.
+  // BURADA TANIMLI (aşağıda değil): hemen altındaki muhasebeyeGidecek bunu okuyor.
+  const [belgeSuresi, setBelgeSuresi] = useState<number | null>(null);
   // YENİ KAYITTA MUHASEBEYE MAİL GİDER: kaydetme anında, cevap şekli
   // seçilmeden. Süresi geçmiş eski kayıt girilirken gitmez (muhasebeGerekliMi).
   const muhasebeyeGidecek = !editId && muhasebeGerekliMi({
     teblig_tarihi: form.teblig_tarihi || null,
     cevapVerildi: Boolean(cevap.cevap_sekli.trim() || cevap.cevap_tarihi),
-    sureGun: null,
+    // Belgeden okunan süre varsa o kullanılır; yoksa muhasebeGerekliMi zaten
+    // varsayılana düşüyor. Sabit null, 15 günlük bir tebligatı süresi geçmiş
+    // sayıp muhasebe mailini engelleyebilirdi.
+    sureGun: belgeSuresi,
   }, false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   // Fiziki tebligat belgesi yükleme (Gözat)
@@ -291,7 +301,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       };
       setForm(ilkForm);
       setCevap(ilkCevap);
-    } else { setEditId(null); setForm(BOS_FORM); setCevap(BOS_CEVAP); }
+      setBelgeSuresi(row.cevap_suresi_gun ?? null);
+    } else { setEditId(null); setForm(BOS_FORM); setCevap(BOS_CEVAP); setBelgeSuresi(null); }
     setBaslangic(JSON.stringify([ilkForm, ilkCevap]));
     setCevapDenendi(false);
     setKilitli(false); // normal aç (kalem/yeni) → kilitsiz; ?kilit=1 efekti sonra true yapar
@@ -331,11 +342,95 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         `icra-tebligat/${editId ?? "yeni"}/${Date.now()}-${temizAd}`);
       setF("belge_yolu", yol);
       toast.success("Tebligat belgesi yüklendi.");
+      await belgeOkuVeDoldur(yol);
     } catch (e) {
       toast.error(`Belge yüklenemedi: ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: 9000 });
     } finally {
       setBelgeYukleniyor(false);
       if (belgeRef.current) belgeRef.current.value = "";
+    }
+  }
+
+  /**
+   * YÜKLENEN TEBLİGATI OKUR ve BOŞ form alanlarını doldurur.
+   *
+   * NİYE (27.11.2026): "Gözat" eskiden dosyayı yalnız depoya atıyordu; PDF hiç
+   * açılmıyordu. Belgeyi okuyan çözümleyici sadece UETS'ten düşen tebligatlarda
+   * çalışıyordu, dolayısıyla elle yüklenen her dosyada cevap_suresi_gun boş kalıyor
+   * ve panel "varsayılan 7 gün" gösteriyordu. 2026/35449'da yakalandı.
+   *
+   * DOLU ALAN EZİLMEZ: UETS yolundaki kuralın aynısı — makine yalnız boşları doldurur.
+   * İnsanın bilerek yazdığı (çoğu kısaltılmış) ünvanı "daha doğrusu bu" diye değiştirmek,
+   * girileni sessizce silmek olurdu.
+   *
+   * SESSİZ GEÇMEZ (AGENTS.md): okunamadıysa ya da belgede süre yazmıyorsa kullanıcı
+   * UYARILIR. Sessiz kalmak, yanlış bir "son cevap günü"ne güvendirmek demek — ekranda
+   * tarih yine çıkar, sadece varsayımdan.
+   */
+  async function belgeOkuVeDoldur(yol: string) {
+    type Cozum = {
+      tur?: string; rolumuz?: string; cevap_suresi_gun?: number | null;
+      dosya_esas_no?: string | null; belge_tarihi?: string | null;
+      alacakli_adi?: string | null; alacakli_vergi_no?: string | null;
+      borclu_adi?: string | null; borclu_tc_no?: string | null;
+      borc_miktari?: number | null; uyarilar?: string[];
+    };
+    let sonuc: { okundu?: boolean; sebep?: string; error?: string; cozum?: Cozum };
+    try {
+      const r = await fetch("/api/icra/belge-oku", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yol }),
+      });
+      sonuc = await r.json();
+      if (!r.ok) throw new Error(sonuc?.error ?? `HTTP ${r.status}`);
+    } catch (e) {
+      toast.error("Belge yüklendi ama OKUNAMADI "
+        + `(${e instanceof Error ? e.message : "bilinmeyen hata"}). `
+        + "Alanları ve cevap süresini elle girin.", { duration: 10000 });
+      return;
+    }
+    if (!sonuc.okundu) {
+      // Taranmış görüntü / inmeyen dosya: hata değil ama sessiz de geçilmez.
+      toast(sonuc.sebep ?? "Belge okunamadı — alanlar elle girilmeli.",
+        { icon: "⚠️", duration: 11000 });
+      return;
+    }
+    const c = sonuc.cozum ?? {};
+    setForm((f) => {
+      const y = { ...f };
+      const koy = (k: keyof IcraForm, v: string | null | undefined) => {
+        if (v && !y[k].trim()) y[k] = String(v);
+      };
+      koy("dosya_esas_no", c.dosya_esas_no);
+      koy("gelen_yazi_tarihi", c.belge_tarihi);
+      koy("alacakli_adi", c.alacakli_adi);
+      koy("alacakli_vergi_no", c.alacakli_vergi_no);
+      koy("borclu_adi", c.borclu_adi);
+      koy("borclu_tc_no", c.borclu_tc_no);
+      if (c.borc_miktari != null && parseParaInput(y.borc_miktari) <= 0) {
+        y.borc_miktari = sayiToInput(c.borc_miktari);
+      }
+      return y;
+    });
+    if (c.cevap_suresi_gun != null) setBelgeSuresi(c.cevap_suresi_gun);
+
+    // ÖDEME EMRİ AYRI UYARILIR: üçüncü şahıs haciz yazısı değil, borçlu biziz.
+    // Bu defter üçüncü şahıs modeline kurulu; buraya yazmak şirkete açılmış takibi
+    // maaş haczi gibi göstermek olurdu (bkz. scripts/icra-belge-oku.mjs).
+    if (c.rolumuz === "borclu") {
+      toast.error("Bu belge bir ÖDEME EMRİ: borçlu biziz, üçüncü şahıs haciz yazısı değil. "
+        + "Bu deftere değil, \"Şirkete Açılan Takipler\"e işlenmeli.", { duration: 14000 });
+      return;
+    }
+    if (c.cevap_suresi_gun != null) {
+      toast.success(`Belge okundu · cevap süresi ${c.cevap_suresi_gun} gün (belgeden).`);
+    } else {
+      toast("Belge okundu ama CEVAP SÜRESİ yazmıyor — varsayılan 7 gün kullanılacak. "
+        + "Belgede süre varsa elle kontrol edin.", { icon: "⚠️", duration: 11000 });
+    }
+    const uyarilar = (c.uyarilar ?? []).filter((u) => !/ÖDEME EMRİ/i.test(u));
+    if (uyarilar.length) {
+      toast(`Belgeden okunamayanlar: ${uyarilar.join(" · ")}`, { icon: "⚠️", duration: 11000 });
     }
   }
 
@@ -422,6 +517,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const payload: Partial<IcraKayit> = {
       ucuncu_sahis: t(form.ucuncu_sahis), dosya_esas_no: t(form.dosya_esas_no),
       belge_yolu: t(form.belge_yolu),
+      // BELGEDEN OKUNAN CEVAP SÜRESİ. Okunamadıysa null kalır ve panel varsayılan
+      // 7 günü kullanır — "(varsayılan)" etiketiyle, uydurulmuş olduğu görünsün diye.
+      cevap_suresi_gun: belgeSuresi,
       gelen_yazi_tarihi: form.gelen_yazi_tarihi || null, teblig_tarihi: form.teblig_tarihi || null,
       // AVUKAT KİPİNDE CEVAP TARİHİ YAZILMAZ: mail gidince sunucu yazar.
       cevap_sekli: t(cevap.cevap_sekli),
