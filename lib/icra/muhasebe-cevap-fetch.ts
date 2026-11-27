@@ -15,8 +15,17 @@
 // EŞLEŞTİRME ÜÇ ŞARTLI:
 //   1) gönderen, Tanımlamalar'daki muhasebe adreslerinden biri
 //   2) mail, bizim gönderimimizden SONRA gelmiş
-//   3) konuda dosya esas no geçiyor ("Re: İcra yazısı 2024/57908 — …")
+//   3) KONUDA ya da GÖVDEDE dosya esas no geçiyor ("Re: İcra yazısı 2024/57908 — …")
 // Üçü birden aranıyor; numara tek başına başka mailde de geçebilir.
+//
+// GÖVDE DE TARANIYOR (27.11.2026): önce yalnız konuya bakılıyordu. Muhasebe
+// "Yanıtla" yerine yeni mail açıp konuyu kendi yazarsa ("İcra cevabı", "Ekte
+// ekstre") numara konuda geçmiyor ve cevap görülmemiş sayılıyordu. Alıntılanan
+// yazışma gövdede durduğu için numara oradan yakalanıyor.
+// YANLIŞ EŞLEŞME RİSKİ ÖLÇÜLDÜ: kutudaki 130 muhasebe maili, bekleyen DOSYALARIN
+// TAMAMININ numaralarına karşı tarandı — tek bir gövdede bile başka bir dosyanın
+// numarası geçmiyordu. Numara biçimi de ayrıca sıkı: "2026/35449" dört hane +
+// ayraç + hane, kelime sınırlarıyla (bkz. dosyaGeciyorMu).
 //
 // BAŞKA ADRESTEN GELEN CEVAP YAKALANMAZ: muhasebe başka bir hesabından yazarsa
 // işaret yanmaz. Uydurmak yerine eksik bırakılıyor — cevabı panele girmek zaten
@@ -36,6 +45,21 @@ export type MuhasebeCevapSonuc = {
   isaretlenen: { dosya: string; nereye: "icra" | "sirket"; gonderen: string; kutu: string }[];
   uyari: string[];
 };
+
+/**
+ * Dosya esas no metinde geçiyor mu? ("2026/35449")
+ *
+ * Düz `includes` yerine kalıp kullanılıyor: mailde numara "2026 / 35449" ya da
+ * "2026-35449" diye yazılmış olabiliyor. Kelime sınırı ŞART — sınırsız arama
+ * "2026/3544" ile "2026/35449"u karıştırır ve YANLIŞ dosyaya cevap işareti koyar;
+ * yanlış işaret, eksik işaretten beterdir (ekranda "cevap geldi" yazar, insan
+ * dosyayı kapanmış sanır).
+ */
+export function dosyaGeciyorMu(metin: string, dosya: string): boolean {
+  const m = dosya.trim().match(/^(\d{4})\s*[/\-]\s*(\d+)$/);
+  if (!m) return metin.includes(dosya.trim());   // beklenmedik biçim → birebir ara
+  return new RegExp(`(?<!\\d)${m[1]}\\s*[/\\-]\\s*${m[2]}(?!\\d)`).test(metin);
+}
 
 type Bekleyen = {
   id: string;
@@ -129,12 +153,18 @@ export async function muhasebeCevaplariniTara(gun = 14): Promise<MuhasebeCevapSo
           if (!gonderen || gonderen === kutu.user.toLowerCase()) continue;
           if (!adresler.has(gonderen)) continue;
           const konu = (parsed.subject ?? "").trim();
-          if (!konu) continue;
+          // MAİLİN DÜZ METNİ — hem eşleştirmede hem panelde gösterimde kullanılıyor.
+          // HTML yerine text yeğleniyor; yoksa HTML'den etiketler ayıklanıyor.
+          const govde = (parsed.text ?? "").trim()
+            || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+          // Konu da gövde de boşsa eşleştirilecek hiçbir şey yok.
+          if (!konu && !govde) continue;
+          const aranacak = `${konu}\n${govde}`;
           const an = parsed.date ? parsed.date.toISOString() : new Date().toISOString();
 
           for (const b of bekleyen) {
             if (b.eslesti) continue;
-            if (!konu.includes(b.dosya)) continue;
+            if (!dosyaGeciyorMu(aranacak, b.dosya)) continue;   // konu VEYA gövde
             if (an <= b.gonderimAt) continue;      // gönderimden önceki mail cevap olamaz
 
             // ── EKLER VE GÖMÜLÜ GÖRSELLER KOVAYA ──
@@ -167,15 +197,13 @@ export async function muhasebeCevaplariniTara(gun = 14): Promise<MuhasebeCevapSo
               ekListe.push({ ad, yol: genel?.publicUrl ?? yol, ...(a.cid ? { cid: a.cid } : {}) });
             }
 
-            // MAİLİN DÜZ METNİ: panelde okunsun diye. HTML yerine text yeğleniyor;
-            // yoksa HTML'den etiketler ayıklanıyor. Uzun zincirler için üst sınır var.
-            const govde = (parsed.text ?? "").trim()
-              || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
-
+            // (govde yukarıda, eşleştirmeden önce çıkarıldı — panelde de o gösteriliyor.)
             const { error } = await sb.from(b.tablo).update({
               muhasebe_cevap_mail_at: an,
               muhasebe_cevap_mail_gonderen: gonderen,
-              muhasebe_cevap_mail_konu: konu.slice(0, 300),
+              // Konusuz mail de artık eşleşebiliyor (gövdeden) → boşsa null yaz,
+              // panelde boş tırnak yerine "konu yok" görünsün.
+              muhasebe_cevap_mail_konu: konu ? konu.slice(0, 300) : null,
               // ÖZET YALNIZ GERÇEK EKLER: gövdeye gömülü görseller (cid'li)
               // "ek" sayılmaz — listede logo görünce ekstre geldi sanılıyordu.
               muhasebe_cevap_mail_ek: ekListe.filter((e) => !e.cid).map((e) => e.ad).join(", ") || null,
