@@ -3,16 +3,34 @@
 //   1. Yetki: sadece yönetici
 //   2. Bucket listele (firmalar, santiyeler, yazismalar, araclar, arac-bakim, vb.)
 //   3. Her bucket için tüm dosyaları recursive listele
-//   4. Dosyaları indir, JSZip'e ekle (bucket adı / klasör yapısı korunur)
-//   5. ZIP buffer'ı stream et
+//   4. Dosyaları indir (beşerli paralel), indirildikçe ZIP akışına yaz
+//   5. Sona _yedek_meta.json ekle, merkezi dizini yaz ve akışı kapat
 //
-// NOT: ZIP dosyası büyük olabilir, indirme uzun sürebilir.
-// Çok fazla dosya varsa (1000+) timeout'a takılabilir, o durumda bucket bazında ayrı ayrı indirebilirsin.
+// 28.11.2026 — YEDEK ALINAMIYORDU. Ölçüm (üretim): 1.508 dosya / 765 MB tek cevapta
+// toplanıyordu ve istek 300,3 saniyede 504 FUNCTION_INVOCATION_TIMEOUT veriyordu.
+// Sebep üçlüydü: (1) her dosya belleğe alınıp JSZip'te birikiyordu, (2) ZIP ancak
+// hepsi bittikten sonra tek parça üretiliyordu, (3) zaten sıkıştırılmış PDF/JPEG/MP4
+// dosyaları bir de DEFLATE'ten geçiriliyordu.
+//
+// Şimdi: ZipAkis ile dosya indirildikçe AKIŞA yazılıyor (bellekte tek dosya durur,
+// indirme ilk saniyede başlar), sıkıştırma yok, indirmeler beşerli paralel.
+// ?kova=<ad> ile tek kova indirilebilir — en büyük kova 291 MB, hepsi 765 MB; yavaş
+// bağlantıda tek tek almak tek çare. ?liste=1 kovaları dosya sayısı/boyutuyla döner.
+//
+// SÜRE BÜTÇESİ: bütçe dolarsa ZIP DÜZGÜN kapatılır ve alınamayan dosyalar
+// _yedek_meta.json içindeki "alinmayan" alanına yazılır — eksik arşiv sessiz kalmaz.
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import JSZip from "jszip";
 import { BUCKET_DISI, YEDEK_BUCKET_LISTESI } from "@/lib/yedek/kapsam";
+import { ZipAkis } from "@/lib/yedek/zip-akis";
+
+// Vercel bu projede işlevi 300 saniyede kesiyor (ölçüldü 28.11.2026: 300,3 sn'de 504).
+export const maxDuration = 300;
+// Kendi bütçemiz daha kısa: kalan süre ZIP'i düzgün kapatmaya ve meta yazmaya gider.
+const SURE_BUTCESI_MS = 270_000;
+// Aynı anda kaç dosya indirilir. En büyük dosya 20,5 MB → 5 taneyle bellek rahat.
+const ES_ZAMANLI_INDIRME = 5;
 
 // Bucket listesi CANLI olarak Supabase'den okunur — sabit liste tutmak, yeni bucket
 // eklendiğinde (ör. kasa-slipleri: 436 dosya / 106 MB) o dosyaların yedeksiz kalmasına
@@ -68,7 +86,8 @@ async function listeleHepsi(
   return sonuc;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const t0 = Date.now();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -120,6 +139,31 @@ export async function GET() {
   // STORAGE YEDEĞİ — tüm bucket'lardaki dosyaları ZIP'e ekle.
   // Dosyaları okunaklı isimle (firma_adi, plaka, iş_adi, evrak konusu) klasörlere yerleştirir.
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const sorgu = new URL(request.url).searchParams;
+  const tumKovalar = await bucketAdlari(supabase);
+
+  // ===== ?liste=1 — kovalar, dosya sayıları ve boyutları. Sayfa her kovayı ayrı
+  // indirebilsin diye; hepsini tek seferde almak yavaş bağlantıda süreye takılıyor.
+  if (sorgu.get("liste") === "1") {
+    const kovalar: { kova: string; dosya: number; bayt: number; hata?: string }[] = [];
+    for (const kova of tumKovalar) {
+      try {
+        const d = await listeleHepsi(supabase, kova);
+        kovalar.push({ kova, dosya: d.length, bayt: d.reduce((t, x) => t + (x.size ?? 0), 0) });
+      } catch (err) {
+        // Sessiz geçilmez: sayfada o kovanın yanında hata görünsün.
+        kovalar.push({ kova, dosya: 0, bayt: 0, hata: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return NextResponse.json({ kovalar }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  // ===== ?kova=<ad> — yalnız o kova. Yoksa hepsi.
+  const istenenKova = sorgu.get("kova");
+  if (istenenKova && !tumKovalar.includes(istenenKova)) {
+    return NextResponse.json({ error: `Kova bulunamadı: ${istenenKova}` }, { status: 404 });
+  }
+  const kovalar = istenenKova ? [istenenKova] : tumKovalar;
 
   // ===== DB LOOKUP MAP'LERİ — UUID'leri insan-okunabilir isimlere çevir =====
   // Dosya/klasör adı için filesystem-safe string'e çevir.
@@ -245,73 +289,106 @@ export async function GET() {
     return parcalar.join("/");
   }
 
-  const zip = new JSZip();
-  const meta: {
-    proje: string;
-    yedek_tarihi: string;
-    bucket_sayilari: Record<string, number>;
-    toplam_dosya: number;
-    isim_eslemesi: Record<string, { orijinal: string; okunakli: string }[]>;
-    hatalar: { bucket: string; path?: string; hata: string }[];
-  } = {
-    proje: "ikikatweb",
-    yedek_tarihi: new Date().toISOString(),
-    bucket_sayilari: {},
-    toplam_dosya: 0,
-    isim_eslemesi: {},
-    hatalar: [],
-  };
-
-  for (const bucket of await bucketAdlari(supabase)) {
-    try {
-      const dosyalar = await listeleHepsi(supabase, bucket);
-      let basarili = 0;
-      meta.isim_eslemesi[bucket] = [];
-      for (const item of dosyalar) {
-        try {
-          const { data, error } = await supabase.storage.from(bucket).download(item.path);
-          if (error || !data) {
-            meta.hatalar.push({ bucket, path: item.path, hata: error?.message ?? "data null" });
-            continue;
-          }
-          const buffer = Buffer.from(await data.arrayBuffer());
-          const okunakli = okunakliPath(bucket, item.path);
-          zip.file(`${bucket}/${okunakli}`, buffer);
-          meta.isim_eslemesi[bucket].push({ orijinal: item.path, okunakli });
-          basarili++;
-        } catch (err) {
-          const m = err instanceof Error ? err.message : String(err);
-          meta.hatalar.push({ bucket, path: item.path, hata: m });
-        }
-      }
-      meta.bucket_sayilari[bucket] = basarili;
-      meta.toplam_dosya += basarili;
-    } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      meta.hatalar.push({ bucket, hata: m });
-      meta.bucket_sayilari[bucket] = 0;
-    }
-  }
-
-  // Meta dosyasını ZIP'in köküne ekle
-  zip.file("_yedek_meta.json", JSON.stringify(meta, null, 2));
-
-  // ZIP'i buffer olarak üret
-  const zipBuffer = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
-
   const tarih = new Date();
   const tarihStr = `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, "0")}-${String(tarih.getDate()).padStart(2, "0")}_${String(tarih.getHours()).padStart(2, "0")}-${String(tarih.getMinutes()).padStart(2, "0")}`;
 
-  return new NextResponse(new Uint8Array(zipBuffer), {
+  const meta: {
+    proje: string;
+    yedek_tarihi: string;
+    kapsam: string;
+    bucket_sayilari: Record<string, number>;
+    toplam_dosya: number;
+    toplam_bayt: number;
+    isim_eslemesi: Record<string, { orijinal: string; okunakli: string }[]>;
+    alinmayan: { bucket: string; path: string; sebep: string }[];
+    hatalar: { bucket: string; path?: string; hata: string }[];
+  } = {
+    proje: "ikikatweb",
+    yedek_tarihi: tarih.toISOString(),
+    kapsam: istenenKova ? `tek kova: ${istenenKova}` : "bütün kovalar",
+    bucket_sayilari: {},
+    toplam_dosya: 0,
+    toplam_bayt: 0,
+    isim_eslemesi: {},
+    alinmayan: [],
+    hatalar: [],
+  };
+
+  const akis = new ReadableStream<Uint8Array>({
+    async start(kontrol) {
+      const zip = new ZipAkis((parca) => kontrol.enqueue(parca));
+      try {
+        for (const bucket of kovalar) {
+          let dosyalar: { path: string; size: number | null }[];
+          try {
+            dosyalar = await listeleHepsi(supabase, bucket);
+          } catch (err) {
+            meta.hatalar.push({ bucket, hata: err instanceof Error ? err.message : String(err) });
+            meta.bucket_sayilari[bucket] = 0;
+            continue;
+          }
+          let basarili = 0;
+          meta.isim_eslemesi[bucket] = [];
+
+          // Beşerli paralel indir, ZIP'e SIRAYLA yaz (arşiv düzeni bozulmasın).
+          for (let i = 0; i < dosyalar.length; i += ES_ZAMANLI_INDIRME) {
+            if (Date.now() - t0 > SURE_BUTCESI_MS) {
+              // Bütçe doldu: kalan her dosya ADIYLA meta'ya yazılır, ZIP düzgün kapanır.
+              for (const kalan of dosyalar.slice(i)) {
+                meta.alinmayan.push({ bucket, path: kalan.path, sebep: "süre limiti" });
+              }
+              break;
+            }
+            const kume = dosyalar.slice(i, i + ES_ZAMANLI_INDIRME);
+            const sonuclar = await Promise.all(kume.map(async (item) => {
+              try {
+                const { data, error } = await supabase.storage.from(bucket).download(item.path);
+                if (error || !data) return { item, hata: error?.message ?? "data null" };
+                return { item, bayt: new Uint8Array(await data.arrayBuffer()) };
+              } catch (err) {
+                return { item, hata: err instanceof Error ? err.message : String(err) };
+              }
+            }));
+            for (const r of sonuclar) {
+              if (!("bayt" in r) || !r.bayt) {
+                meta.hatalar.push({ bucket, path: r.item.path, hata: r.hata ?? "bilinmeyen" });
+                continue;
+              }
+              const okunakli = okunakliPath(bucket, r.item.path);
+              zip.dosyaEkle(`${bucket}/${okunakli}`, r.bayt, tarih);
+              meta.isim_eslemesi[bucket].push({ orijinal: r.item.path, okunakli });
+              meta.toplam_bayt += r.bayt.length;
+              basarili++;
+            }
+          }
+          meta.bucket_sayilari[bucket] = basarili;
+          meta.toplam_dosya += basarili;
+        }
+
+        // Meta EN SONA yazılır: o ana kadar ne indi, ne inmedi, ne hata verdi hepsi burada.
+        zip.dosyaEkle(
+          "_yedek_meta.json",
+          new TextEncoder().encode(JSON.stringify(meta, null, 2)),
+          tarih,
+        );
+        zip.bitir();
+        kontrol.close();
+      } catch (err) {
+        // Buraya düşmek = ZIP bozuk. Akışı hata ile kapatıyoruz; tarayıcı yarım
+        // dosyayı "indirildi" sanmasın.
+        console.error("[yedek/storage] akış hatası:", err);
+        kontrol.error(err);
+      }
+    },
+  });
+
+  const adEk = istenenKova ? `-${istenenKova}` : "";
+  return new NextResponse(akis, {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="ikikatweb-dosya-yedek-${tarihStr}.zip"`,
-      "Content-Length": String(zipBuffer.length),
+      "Content-Disposition": `attachment; filename="ikikatweb-dosya-yedek${adEk}-${tarihStr}.zip"`,
+      "Cache-Control": "no-store",
     },
   });
 }

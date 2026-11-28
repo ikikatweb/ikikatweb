@@ -2,7 +2,7 @@
 // /api/yedek endpoint'i tüm tabloları JSON olarak çekip download header'ı ile döner.
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,39 @@ export default function YedekPage() {
     toplamSatir: number;
     tabloSayisi: number;
   } | null>(null);
+  // Kova listesi — her kova AYRI indirilebilsin diye. Hepsini tek istekte almak
+  // yavas baglantida sure limitine takiliyor (765 MB); kova kova almak tek care.
+  const [kovalar, setKovalar] = useState<{ kova: string; dosya: number; bayt: number; hata?: string }[] | null>(null);
+  const [kovaHatasi, setKovaHatasi] = useState<string | null>(null);
+  const [inenKova, setInenKova] = useState<string | null>(null);
   const [sonStorageYedekBilgi, setSonStorageYedekBilgi] = useState<{
     tarih: string;
     boyut: string;
     toplamDosya: number;
     bucketSayisi: number;
   } | null>(null);
+
+  // KANCALAR ERKEN RETURN'DEN ÖNCE: aşağıda yönetici olmayan için return var;
+  // kanca onun altında kalırsa React kural ihlali olur (eslint rules-of-hooks).
+  // Kova listesini cek. Alinamazsa SESSIZ KALMAZ: kart hatayi yazar, yoksa
+  // kullanici neyin ne kadar oldugunu bilmeden indirmeye kalkar.
+  const kovalariYukle = useCallback(async () => {
+    try {
+      const r = await fetch("/api/yedek/storage?liste=1");
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error ?? `HTTP ${r.status}`);
+      }
+      const d = await r.json();
+      setKovalar(d.kovalar ?? []);
+      setKovaHatasi(null);
+    } catch (err) {
+      setKovalar([]);
+      setKovaHatasi(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => { if (isYonetici) kovalariYukle(); }, [isYonetici, kovalariYukle]);
 
   // Sadece yönetici görsün
   if (!authLoading && !isYonetici) {
@@ -112,11 +139,17 @@ export default function YedekPage() {
     }
   }
 
-  async function storageYedeginiIndir() {
+
+  async function storageYedeginiIndir(kova?: string) {
     setStorageYukleniyor(true);
-    const t = toast.loading("Storage yedeği hazırlanıyor... (PDF/görsel dosyaları indiriliyor — birkaç dakika sürebilir)");
+    setInenKova(kova ?? "(hepsi)");
+    const t = toast.loading(
+      kova
+        ? `"${kova}" kovası hazırlanıyor — dosyalar indikçe ZIP akıyor, sayfayı kapatmayın.`
+        : "Bütün kovalar hazırlanıyor — 765 MB. Bağlantı yavaşsa süre limitine takılabilir; kova kova almak daha güvenli.",
+    );
     try {
-      const res = await fetch("/api/yedek/storage");
+      const res = await fetch(`/api/yedek/storage${kova ? `?kova=${encodeURIComponent(kova)}` : ""}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -150,6 +183,7 @@ export default function YedekPage() {
       toast.error(`Storage yedeği alınamadı: ${msg}`, { id: t });
     } finally {
       setStorageYukleniyor(false);
+      setInenKova(null);
     }
   }
 
@@ -185,7 +219,10 @@ export default function YedekPage() {
               Süre limiti yüzünden bir tablo alınamazsa dosya <strong>yine düzgün iner</strong> ve alınamayan
               tabloların adları kırmızı uyarı olarak ekrana yazılır. Uyarı görmediyseniz yedek tamdır.
             </li>
-            <li><strong>PDF/görseller ayrı:</strong> aşağıdaki Dosya Yedeği (ZIP) butonuyla iner; 480 MB&apos;ı aşan arşivler süre limitine takılabilir.</li>
+            <li>
+              <strong>PDF/görseller ayrı:</strong> aşağıdaki Dosya Yedeği bölümünden iner. Toplam 765 MB;
+              her kovayı ayrı indirmek en güvenli yol.
+            </li>
             <li>Yedek dosyasını <strong>güvenli bir yere</strong> (harici disk, Google Drive vb.) saklayın.</li>
             <li>Hassas veri içerir — yetkisiz kişilerle paylaşmayın.</li>
           </ul>
@@ -257,14 +294,55 @@ export default function YedekPage() {
           </div>
         </div>
 
-        <Button
-          onClick={storageYedeginiIndir}
-          disabled={storageYukleniyor || authLoading}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          <FileArchive size={16} className="mr-2" />
-          {storageYukleniyor ? "Hazırlanıyor..." : "Dosya Yedeğini İndir (ZIP)"}
-        </Button>
+        {/* KOVA KOVA INDIRME — asil yol. 765 MB tek istekte yavas baglantida 300
+            saniyeye takiliyor; tek tek alininca her biri rahat sigiyor. */}
+        {kovaHatasi && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1.5 mb-3">
+            Kova listesi alınamadı: {kovaHatasi} — aşağıdaki &quot;Hepsini indir&quot; yine çalışır ama
+            ne kadar olduğunu göstermez.
+          </p>
+        )}
+        {kovalar === null ? (
+          <p className="text-xs text-gray-400 mb-3">Kovalar okunuyor...</p>
+        ) : kovalar.length > 0 && (
+          <div className="mb-4 border border-gray-200 rounded-lg divide-y divide-gray-100">
+            {kovalar.map((k) => (
+              <div key={k.kova} className="flex items-center justify-between px-3 py-2">
+                <div className="text-xs">
+                  <span className="font-medium text-[#1E3A5F]">{k.kova}</span>
+                  <span className="text-gray-400">
+                    {" "}· {k.dosya.toLocaleString("tr-TR")} dosya · {(k.bayt / 1048576).toFixed(1)} MB
+                  </span>
+                  {k.hata && <span className="block text-red-600">Listelenemedi: {k.hata}</span>}
+                </div>
+                <Button
+                  size="sm" variant="outline"
+                  onClick={() => storageYedeginiIndir(k.kova)}
+                  disabled={storageYukleniyor || authLoading || k.dosya === 0}
+                  className="h-7 text-xs"
+                >
+                  <Download size={12} className="mr-1" />
+                  {inenKova === k.kova ? "İniyor..." : "İndir"}
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+              <span className="text-xs font-semibold text-[#1E3A5F]">
+                Toplam · {kovalar.reduce((t, k) => t + k.dosya, 0).toLocaleString("tr-TR")} dosya ·{" "}
+                {(kovalar.reduce((t, k) => t + k.bayt, 0) / 1048576).toFixed(0)} MB
+              </span>
+              <Button
+                size="sm"
+                onClick={() => storageYedeginiIndir()}
+                disabled={storageYukleniyor || authLoading}
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <FileArchive size={12} className="mr-1" />
+                {inenKova === "(hepsi)" ? "İniyor..." : "Hepsini indir"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {sonStorageYedekBilgi && (
           <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-600">
@@ -287,8 +365,16 @@ export default function YedekPage() {
         )}
 
         <div className="mt-4 pt-4 border-t border-gray-100 text-[10px] text-gray-400 space-y-1">
-          <p>⚠ Storage yedeği büyük olabilir — Vercel timeout (60sn) sınırı aşılırsa hata alabilirsin.</p>
-          <p>Çok dosya varsa yedek almak 1-5 dakika sürebilir, sayfayı kapatma.</p>
+          <p>
+            Sunucunun bir isteğe ayırdığı süre <strong>300 saniye</strong>. Dosyalar indikçe ZIP akar,
+            yani sonda toplu bir bekleme yok; ama bütün kovaları tek seferde almak yavaş bağlantıda bu
+            süreye takılabilir. <strong>Kova kova indirmek güvenlidir.</strong>
+          </p>
+          <p>
+            Süre dolarsa ZIP yine düzgün iner; alınamayan dosyalar arşivin içindeki{" "}
+            <code>_yedek_meta.json</code> dosyasının <code>alinmayan</code> listesinde adıyla yazılır.
+          </p>
+          <p>Arşiv sıkıştırılmaz (PDF/JPEG/MP4 zaten sıkıştırılmış) — ZIP boyutu dosyaların toplamı kadardır.</p>
         </div>
       </div>
 

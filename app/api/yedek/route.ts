@@ -32,11 +32,16 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { yedekKapsami, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA, GUN_AYNASI, TAVAN_SATIR } from "@/lib/yedek/kapsam";
 
-export const maxDuration = 60;
+// 300 saniye, 60 değil (28.11.2026 düzeltmesi). Buraya 60 yazılmıştı ve bu PLATFORM
+// SINIRI sanılıyordu; ölçtüm, Vercel bu projede işlevi 300. saniyede kesiyor
+// (dosya yedeği 300,3 sn'de 504 FUNCTION_INVOCATION_TIMEOUT verdi). 60'lık sınır
+// kendi koyduğumuz sınırmış ve bütün tablolar dahil edilince (26-45 sn) tehlikeli
+// biçimde yakındı.
+export const maxDuration = 300;
 
-// Akışı 60 sn'de kesilmeden önce kendimiz kapatmak için bütçe. Kalan 12 sn meta'yı
-// yazmaya ve cevabı kapatmaya yeter.
-const SURE_BUTCESI_MS = 48_000;
+// Akış sınırda kesilmeden önce kendimiz kapatalım: kalan 20 sn meta'yı yazmaya ve
+// cevabı kapatmaya yeter.
+const SURE_BUTCESI_MS = 280_000;
 
 export async function GET() {
   const t0 = Date.now();
