@@ -1,15 +1,27 @@
-// Yedek KAPSAMI — hangi tablolar/bucket'lar yedeklenir, hangileri bilinçli olarak dışarıda.
+// Yedek KAPSAMI — hangi tablolar/bucket'lar yedeklenir.
 //
 // TEK KAYNAK: hem web endpoint'i (app/api/yedek, app/api/yedek/storage) hem de bu makinedeki
-// haftalık yerel yedek (scripts/yedek-al.ts) bu dosyayı kullanır. Liste iki yere kopyalandığı
-// sürece biri güncellenip diğeri unutuluyordu; tablo adları yanlış yazıldığı halde yıllarca
-// fark edilmemesinin sebebi buydu.
+// haftalık yerel yedek (scripts/yedek-al.ts) bu dosyayı kullanır.
 //
-// Yeni tablo/bucket eklerken: ya listeye ekle ya da dışarıda-kalanlara SEBEBİYLE ekle.
-// İkisine de eklenmezse yedek meta'sındaki "uyarilar" alanı bunu bildirir.
+// 28.11.2026 — LİSTE ELLE TUTULMUYOR ARTIK. Eskiden yedeklenecek tablolar burada elle
+// yazılı bir listeydi; siteye yeni tablo eklenip listeye yazılmayınca o tablo HİÇ
+// yedeklenmiyordu. 15 tablo (tebligat, avukatlar, firma_uets, icra_sirket_takip,
+// firma_antet_gecmisi, ketsis_*, uyari_*, kullanici_token, konum_onaylari,
+// icra_*_mail_log, prim_dengesi_gorulen) aylarca hiçbir yedekte yer almadı; uyarı
+// veriliyordu ama kimse listeye eklemiyordu.
+//
+// Şimdi kapsam CANLI OKUNUYOR: `yedekKapsami()` veritabanındaki bütün gerçek tabloları
+// getirir (public.yedek_tablolari() işlevi). Yeni tablo kendiliğinden yedeğe girer;
+// hiçbir yere bir şey yazmak gerekmez. View'ler hariç — onlar başka tablolardan
+// üretildiği için yedekte tekrar eden veri olurdu.
 
 // ── Veritabanı tabloları ────────────────────────────────────────────────────────
-export const YEDEK_TABLOLARI = [
+// GÜVENLİK AĞI — canlı liste okunamazsa kullanılacak bilinen tablolar.
+// Yedek kapsamını bu liste BELİRLEMEZ (bkz. yedekKapsami); yalnız veritabanından liste
+// alınamadığında devreye girer ve o durumda yedeğe "liste alınamadı" uyarısı yazılır.
+// Burada olup veritabanında artık bulunmayan bir ad da uyarı olarak bildirilir
+// (tablo yeniden adlandırılmış ya da silinmiş olabilir).
+export const BILINEN_TABLOLAR = [
   // Yönetim
   "firmalar",
   "santiyeler",
@@ -105,13 +117,96 @@ export const YEDEK_TABLOLARI = [
   // NOT: Araç↔sekme atamaları "araclar.arvento_sekmeler" kolonunda → "araclar" ile yedekleniyor.
 ];
 
-// Bilinçli olarak yedeğe ALINMAYAN tablolar — sebebiyle birlikte.
-export const YEDEK_DISI: Record<string, string> = {
-  bildirim_gecmisi: "bildirim logu — 45binden fazla satır, veri değeri düşük",
-  arvento_harita_ozet: "harita özet önbelleği — rapor/güzergah verisinden yeniden üretilir",
-  kasa_hareketi_backup_20260423: "eski manuel yedek tablosu",
-  yedek_kaydi: "yedek alındı damgası (meta) — geri yüklenmesi anlamsız",
+// Yedeğe ALINMAYAN tablolar — sebebiyle birlikte.
+// 28.11.2026: BOŞ. "Sitede ne varsa tümü yedeklenmeli" kuralı gereği hiçbir tablo
+// dışarıda bırakılmıyor — bildirim logu (bildirim_gecmisi, 14 MB) ve harita önbelleği
+// de dahil. Mekanizma duruyor: gerçekten dışarıda kalması gereken bir tablo olursa
+// buraya SEBEBİYLE yazılır, böylece "neden yok" sorusu yedeğin içinden cevaplanır.
+export const YEDEK_DISI: Record<string, string> = {};
+
+// Supabase bir istekte EN ÇOK 1000 satır döndürür (proje API ayarı "Max rows").
+// Parça boyutu bunun üstüne çıkarsa dönen satır istenenden az olur, kod da bunu
+// "tablo bitti" sanıp tabloyu SESSİZCE yarıda keser. Bu yüzden tavan burada sabit.
+export const TAVAN_SATIR = 1000;
+
+export type YedekTablo = { ad: string; idVar: boolean | null };
+export type KapsamSonucu = {
+  tablolar: YedekTablo[];
+  uyarilar: string[];
+  kaynak: "canli" | "sema" | "bilinen";
 };
+
+/**
+ * Yedeklenecek tabloları CANLI olarak getirir. Sırayla üç kaynak denenir; hangisinin
+ * kullanıldığı ve ne ters gittiği uyarı olarak döner — sessizce eksik yedek alınmaz.
+ */
+export async function yedekKapsami(adres: string, servisAnahtari: string): Promise<KapsamSonucu> {
+  const uyarilar: string[] = [];
+  const baslik = {
+    apikey: servisAnahtari,
+    Authorization: `Bearer ${servisAnahtari}`,
+    "Content-Type": "application/json",
+  };
+  let tablolar: YedekTablo[] | null = null;
+  let kaynak: KapsamSonucu["kaynak"] = "bilinen";
+
+  // 1) ASIL KAYNAK: veritabanı işlevi — yalnız gerçek tablolar, id bilgisiyle.
+  try {
+    const r = await fetch(`${adres}/rest/v1/rpc/yedek_tablolari`, {
+      method: "POST", headers: baslik, body: "{}",
+    });
+    if (r.ok) {
+      const d = (await r.json()) as { ad: string; id_var: boolean }[];
+      if (Array.isArray(d) && d.length) {
+        tablolar = d.map((x) => ({ ad: String(x.ad), idVar: !!x.id_var }));
+        kaynak = "canli";
+      }
+    } else {
+      uyarilar.push(`Canlı tablo listesi işlevi çağrılamadı (HTTP ${r.status}) — şema özetine düşüldü.`);
+    }
+  } catch (e) {
+    uyarilar.push(`Canlı tablo listesi işlevi çağrılamadı (${e instanceof Error ? e.message : String(e)}) — şema özetine düşüldü.`);
+  }
+
+  // 2) YEDEK KAYNAK: PostgREST şema özeti. View'leri de içerir → tekrar eden veri riski.
+  if (!tablolar) {
+    try {
+      const spec = await fetch(`${adres}/rest/v1/`, { headers: baslik }).then((r) => (r.ok ? r.json() : null));
+      const tanim = (spec?.definitions ?? {}) as Record<string, { properties?: Record<string, unknown> }>;
+      const adlar = Object.keys(tanim);
+      if (adlar.length) {
+        tablolar = adlar.map((ad) => ({ ad, idVar: "id" in (tanim[ad]?.properties ?? {}) }));
+        kaynak = "sema";
+        uyarilar.push("Tablo listesi şema özetinden alındı: VIEW varsa yedekte tekrar eden veri olabilir.");
+      }
+    } catch { /* 3. adımda ele alınıyor */ }
+  }
+
+  // 3) SON ÇARE: bilinen liste. Sonradan eklenen tablolar eksik kalır — SESSİZ GEÇİLMEZ.
+  if (!tablolar) {
+    tablolar = BILINEN_TABLOLAR.map((ad) => ({ ad, idVar: null }));
+    kaynak = "bilinen";
+    uyarilar.push(
+      "CANLI TABLO LİSTESİ ALINAMADI → elimizdeki eski liste kullanıldı. " +
+      "Sonradan eklenmiş tablolar bu yedekte YOK olabilir; yedeği tam saymayın.",
+    );
+  }
+
+  // Bilinen ama artık görünmeyen tablo: adı değişmiş ya da silinmiş olabilir.
+  if (kaynak !== "bilinen") {
+    const adlar = new Set(tablolar.map((t) => t.ad));
+    const kayip = BILINEN_TABLOLAR.filter((t) => !adlar.has(t));
+    if (kayip.length) {
+      uyarilar.push(`Daha önce var olup ŞİMDİ BULUNMAYAN tablolar (adı değişmiş ya da silinmiş olabilir): ${kayip.join(", ")}`);
+    }
+  }
+
+  const disi = YEDEK_DISI;
+  const secilen = tablolar
+    .filter((t) => !(t.ad in disi))
+    .sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
+  return { tablolar: secilen, uyarilar, kaynak };
+}
 
 /**
  * GÜN AYNASI — ağır tabloların büyük sütunu haftalık JSON'a KONMAZ, ayrı gün dosyalarına

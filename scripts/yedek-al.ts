@@ -28,7 +28,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
-  YEDEK_TABLOLARI, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA,
+  yedekKapsami, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA, TAVAN_SATIR,
   BUCKET_DISI, YEDEK_BUCKET_LISTESI, GUN_AYNASI, TAZE_GUN,
 } from "@/lib/yedek/kapsam";
 import { anahtarVar, sifreliYazici, sifreliYaz, SIFRELI_UZANTI, SIFRE_EK_BAYT } from "@/lib/yedek/sifre";
@@ -94,33 +94,32 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   const uyarilar: string[] = [];
   const satirSayilari: Record<string, number> = {};
 
-  // Kapsam denetimi — listede olmayan yeni tablo var mı?
-  try {
-    const spec = await fetch(`${URL_}/rest/v1/`, { headers: BASLIK }).then((r) => (r.ok ? r.json() : null));
-    const canli: string[] = Object.keys(spec?.definitions ?? {});
-    if (canli.length) {
-      const listelenmemis = canli.filter((x) => !YEDEK_TABLOLARI.includes(x) && !(x in YEDEK_DISI));
-      if (listelenmemis.length) uyarilar.push(`Yedek listesinde OLMAYAN tablolar: ${listelenmemis.join(", ")}`);
-      const bulunmayan = YEDEK_TABLOLARI.filter((x) => !canli.includes(x));
-      if (bulunmayan.length) uyarilar.push(`Listede olup veritabanında BULUNMAYAN tablolar: ${bulunmayan.join(", ")}`);
-    }
-  } catch { uyarilar.push("Tablo listesi denetimi yapılamadı."); }
+  // KAPSAM CANLI OKUNUR — elle liste yok. Veritabanındaki her gerçek tablo yedeğe girer;
+  // siteye yeni tablo eklenince hiçbir yere bir şey yazmak gerekmez (28.11.2026).
+  const kapsam = await yedekKapsami(URL_!, ANAHTAR!);
+  uyarilar.push(...kapsam.uyarilar);
+  log(`Kapsam: ${kapsam.tablolar.length} tablo (kaynak: ${kapsam.kaynak})`);
 
   await yaz('{"veriler":{');
   let ilk = true;
-  for (const tablo of YEDEK_TABLOLARI) {
+  for (const { ad: tablo, idVar } of kapsam.tablolar) {
     await yaz(`${ilk ? "" : ","}${JSON.stringify(tablo)}:[`);
     ilk = false;
     let sayi = 0;
     let offset = 0;
-    let parcaBoyutu = OZEL_PARCA[tablo] ?? PARCA_BOYUTU;
+    // TAVAN_SATIR aşılamaz: aşılırsa dönen satır istenenden az olur, aşağıdaki
+    // "parca.length < parcaBoyutu" bunu tablo bitti sanıp SESSİZCE yarıda keser.
+    let parcaBoyutu = Math.min(TAVAN_SATIR, OZEL_PARCA[tablo] ?? PARCA_BOYUTU);
     // Gün aynası olan tablolarda ağır sütun ATLANIR (ayrı gün dosyalarında duruyor).
     const ayna = GUN_AYNASI[tablo];
     const secim = ayna ? await hafifSecim(tablo, ayna.agirSutun) : "*";
-    if (ayna) parcaBoyutu = PARCA_BOYUTU;   // ağır sütun yokken büyük parça sorun değil
+    if (ayna) parcaBoyutu = Math.min(TAVAN_SATIR, PARCA_BOYUTU);   // ağır sütun yokken büyük parça sorun değil
+    // SIRALI sayfalama: sırasız offset sayfalamasında PostgREST satır atlayıp
+    // tekrarlayabiliyor — yedekte bu sessiz veri kaybı demek.
+    const sira = idVar === false ? "" : "&order=id";
     try {
       while (true) {
-        const r = await fetch(`${URL_}/rest/v1/${tablo}?select=${secim}&offset=${offset}&limit=${parcaBoyutu}`, { headers: BASLIK });
+        const r = await fetch(`${URL_}/rest/v1/${tablo}?select=${secim}${sira}&offset=${offset}&limit=${parcaBoyutu}`, { headers: BASLIK });
         if (!r.ok) {
           // Ağır tablolarda 500 gelebiliyor → parçayı küçültüp yeniden dene.
           if (r.status >= 500 && parcaBoyutu > 10) { parcaBoyutu = Math.max(10, Math.floor(parcaBoyutu / 4)); continue; }
@@ -144,8 +143,9 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
     proje: "ikikatweb",
     yedek_tarihi: t.toISOString(),
     kaynak: "yerel (scripts/yedek-al.ts)",
-    toplam_tablo: YEDEK_TABLOLARI.length,
-    basarili_tablo: YEDEK_TABLOLARI.length - hatalar.length,
+    kapsam_kaynagi: kapsam.kaynak,   // canli | sema | bilinen
+    toplam_tablo: kapsam.tablolar.length,
+    basarili_tablo: kapsam.tablolar.length - hatalar.length,
     toplam_satir: Object.values(satirSayilari).reduce((s, n) => s + n, 0),
     yedek_disi: YEDEK_DISI,
     hatalar,
@@ -159,7 +159,7 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   fs.renameSync(gecici, nihai); // dosya TAM → nihai adına al (bu satıra kadar gelen yedek eksiksizdir)
 
   const boyut = fs.statSync(nihai).size;
-  log(`Veritabanı: ${meta.toplam_satir.toLocaleString("tr-TR")} satır / ${YEDEK_TABLOLARI.length} tablo → ${path.basename(nihai)} (${mb(boyut)})${sifreli ? " [şifreli]" : ""}`);
+  log(`Veritabanı: ${meta.toplam_satir.toLocaleString("tr-TR")} satır / ${kapsam.tablolar.length} tablo → ${path.basename(nihai)} (${mb(boyut)})${sifreli ? " [şifreli]" : ""}`);
   if (!sifreli) log("  UYARI: YEDEK_SIFRE_ANAHTARI tanımsız — yedek DÜZ METİN yazıldı (TC kimlik dahil her şey açık).");
   for (const u of uyarilar) log(`  UYARI: ${u}`);
 

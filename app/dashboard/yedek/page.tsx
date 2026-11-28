@@ -171,10 +171,19 @@ export default function YedekPage() {
               tam yedek (veritabanı + tüm dosyalar) <code>C:\ikikatweb-yedek</code> klasörüne yazılır.
               Buradaki butonlar <strong>ek/elle</strong> yedek içindir.
             </li>
-            <li>Veritabanı yedeği <strong>~110 MB</strong>; indirme birkaç dakika sürebilir, sayfayı kapatmayın.</li>
             <li>
-              İndirilen JSON&apos;un <strong>sonunda <code>&quot;meta&quot;</code> bölümü olmalı</strong>. Yoksa indirme
-              yarıda kesilmiştir (süre limiti) ve o yedek eksiktir — otomatik yedeği kullanın.
+              <strong>Veritabanındaki bütün tablolar yedeğe girer</strong> (bugün 91 tablo). Liste elle
+              tutulmuyor: siteye yeni bir tablo eklendiğinde kendiliğinden yedeğe dahil olur.
+            </li>
+            <li>Veritabanı yedeği <strong>~54 MB</strong>; yarım dakika kadar sürer, sayfayı kapatmayın.</li>
+            <li>
+              <strong>GPS güzergah noktaları burada YOK:</strong> tek başına 124 MB olduğu ve 60 saniyelik
+              sunucu limitini tek başına doldurduğu için web yedeğinden çıkarıldı. Haftalık yerel yedekte
+              gün gün duruyor (<code>C:\ikikatweb-yedek\gunluk</code>).
+            </li>
+            <li>
+              Süre limiti yüzünden bir tablo alınamazsa dosya <strong>yine düzgün iner</strong> ve alınamayan
+              tabloların adları kırmızı uyarı olarak ekrana yazılır. Uyarı görmediyseniz yedek tamdır.
             </li>
             <li><strong>PDF/görseller ayrı:</strong> aşağıdaki Dosya Yedeği (ZIP) butonuyla iner; 480 MB&apos;ı aşan arşivler süre limitine takılabilir.</li>
             <li>Yedek dosyasını <strong>güvenli bir yere</strong> (harici disk, Google Drive vb.) saklayın.</li>
