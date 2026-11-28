@@ -224,6 +224,10 @@ export default function DashboardPage() {
   const [bordroLoading, setBordroLoading] = useState(true);
   const [yaklasirGun, setYaklasirGun] = useState(30);
   const [kaskoYaklasirGun, setKaskoYaklasirGun] = useState(30); // kasko ayrı eşik; boşsa trafik değerine düşer
+  // MUAYENE DE AYRI EŞİK (28.11.2026). Eskiden muayene trafik sigortasıyla aynı eşiği
+  // kullanıyordu; Tanımlamalar'da muayene için 30 gün girilmesi hiçbir şeyi değiştirmiyor,
+  // araç yine trafik eşiğinde (14 gün) ana sayfaya düşüyordu. Boşsa trafik değerine düşer.
+  const [muayeneYaklasirGun, setMuayeneYaklasirGun] = useState(30);
   const [editEvrakId, setEditEvrakId] = useState<string | null>(null);
   const [eksikEvrakKisiFiltre, setEksikEvrakKisiFiltre] = useState<string | null>(null);
   const [editSigortaKey, setEditSigortaKey] = useState<string | null>(null);
@@ -330,6 +334,11 @@ export default function DashboardPage() {
   const [eaNotu, setEaNotu] = useState("");
   const [eaSaving, setEaSaving] = useState(false);
   const azKaldiGun = Math.round(yaklasirGun / 3);
+  // "Az Kaldı" rozeti de satırın TÜRÜNE göre hesaplanır: eşik türe göre değişiyorsa
+  // üçte biri de değişir. Eskiden hepsi trafik eşiğinden türetiliyordu.
+  const azKaldiEsigi = (field: string) => Math.round(
+    (field === "kasko_bitis" ? kaskoYaklasirGun : field === "muayene_bitis" ? muayeneYaklasirGun : yaklasirGun) / 3,
+  );
 
   const bugun = new Date();
   const ayBaslangic = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-01`;
@@ -428,7 +437,7 @@ export default function DashboardPage() {
         const sigortaVar = widgetGorunur("sigorta_muayene");
         const bakimVar = widgetGorunur("yaklasan_bakim");
         const bos = <T,>(): Promise<T[]> => Promise.resolve([] as T[]);
-        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, sigTek, sigVaz] = await Promise.all([
+        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, muayeneGun, sigTek, sigVaz] = await Promise.all([
           getAraclar().catch(() => []),                       // araç adları başka widget'larda da lazım
           sigortaVar ? getTumPoliceler().catch(() => []) : bos(),
           sigortaVar ? getTeklifGonderimler().catch(() => []) : bos(),
@@ -437,6 +446,7 @@ export default function DashboardPage() {
           bakimVar ? getAracBakimlar().catch(() => []) : bos(),
           sigortaVar ? getDegerler("sigorta_yaklasir_gun").catch(() => []) : bos(),
           sigortaVar ? getDegerler("kasko_yaklasir_gun").catch(() => []) : bos(),
+          sigortaVar ? getDegerler("muayene_yaklasir_gun").catch(() => []) : bos(),
           sigortaVar ? getSigortaTeklifler().catch(() => []) : bos(),
           sigortaVar ? getSigortaVazgecler().catch(() => []) : bos(),
         ]);
@@ -451,6 +461,7 @@ export default function DashboardPage() {
         const trafikGunVal = yakGun.length > 0 ? (parseInt(String(yakGun[0])) || 30) : 30;
         setYaklasirGun(trafikGunVal);
         setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(String(kaskoGun[0])) || trafikGunVal) : trafikGunVal);
+        setMuayeneYaklasirGun(muayeneGun.length > 0 ? (parseInt(String(muayeneGun[0])) || trafikGunVal) : trafikGunVal);
       } catch { /* sessiz */ }
     })();
 
@@ -834,7 +845,8 @@ export default function DashboardPage() {
         const vazgecTip = field === "kasko_bitis" ? "kasko" : field === "trafik_sigorta_bitis" ? "trafik" : null;
         if (vazgecTip && vazgecSet.has(`${a.id}|${vazgecTip}`)) continue;
         const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
-        const esik = field === "kasko_bitis" ? kaskoYaklasirGun : yaklasirGun; // kasko ayrı eşik
+        // Kasko ve muayene AYRI eşik kullanır; taşıt kartı trafik eşiğinde kalır.
+        const esik = field === "kasko_bitis" ? kaskoYaklasirGun : field === "muayene_bitis" ? muayeneYaklasirGun : yaklasirGun;
         // TEKLİF SÜRECİ OLAN ARAÇ, bitişine çok olsa da burada görünür.
         // Araç Listesi'nden teklif istendiğinde ve cevaplar mailden geldiğinde, araç henüz
         // "yaklaşan" sayılmıyorsa gelen teklifler hiçbir yerde görünmüyordu — ana sayfaya
@@ -852,7 +864,7 @@ export default function DashboardPage() {
     const ilk = sirali.slice(0, 15);
     const teklifliler = sirali.slice(15).filter((r) => r.teklifIstendi || r.teklifGeldi > 0);
     return [...ilk, ...teklifliler];
-  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, sigortaVazgecler, isYonetici, kullanici, teklifGonderimler, sigortaTeklifler]);
+  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, muayeneYaklasirGun, sigortaVazgecler, isYonetici, kullanici, teklifGonderimler, sigortaTeklifler]);
 
   // KIRMIZI ŞERİT — sayfanın en üstü. İki grup birden:
   //   • SON GÜN: bugün ya da yarın bitecek olanlar (kalanGun 0 veya 1) — hâlâ önlem alınabilir.
@@ -2203,7 +2215,7 @@ export default function DashboardPage() {
                             <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">Poliçe yok</span>
                           ) : y.kalanGun < 0 ? (
                             <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Süresi Geçmiş</span>
-                          ) : y.kalanGun <= azKaldiGun ? (
+                          ) : y.kalanGun <= azKaldiEsigi(y.field) ? (
                             <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Az Kaldı ({y.kalanGun}g)</span>
                           ) : (
                             <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Yaklaşıyor ({y.kalanGun}g)</span>

@@ -135,17 +135,22 @@ export default function SigortaMuayenePage() {
   const azKaldiGun = Math.round(yaklasirGun / 3);
   const [kaskoYaklasirGun, setKaskoYaklasirGun] = useState(30); // kasko boşsa trafik değerine düşürülür (loadData)
   const kaskoAzKaldiGun = Math.round(kaskoYaklasirGun / 3);
+  // MUAYENE DE AYRI EŞİK (28.11.2026) — Tanımlamalar'daki "muayene_yaklasir_gun".
+  // Boşsa trafik değerine düşer (loadData).
+  const [muayeneYaklasirGun, setMuayeneYaklasirGun] = useState(30);
+  const muayeneAzKaldiGun = Math.round(muayeneYaklasirGun / 3);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData, yakGun, kaskoGun, cinsData] = await Promise.all([
+      const [aData, pData, sfData, acData, yakGun, kaskoGun, muayeneGun, cinsData] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
         getDegerler("kasko_yaklasir_gun").catch(() => []),
+        getDegerler("muayene_yaklasir_gun").catch(() => []),
         getTanimlamalar("arac_cinsi").catch(() => []),
       ]);
       const araclarData = (aData as AracWithRelations[]) ?? [];
@@ -478,7 +483,10 @@ export default function SigortaMuayenePage() {
   // renderTarihCell — inline render (sub-component olarak değil, focus kaybını önler)
   function renderTarihCell(arac: AracWithRelations, field: string) {
     const tarih = arac[field as keyof AracWithRelations] as string | null;
-    const { durum, kalanGun } = tarihDurumHesapla(tarih, yaklasirGun, azKaldiGun);
+    // Muayene kendi eşiğini kullanır; taşıt kartı trafik eşiğinde kalır.
+    const esikY = field === "muayene_bitis" ? muayeneYaklasirGun : yaklasirGun;
+    const esikAz = field === "muayene_bitis" ? muayeneAzKaldiGun : azKaldiGun;
+    const { durum, kalanGun } = tarihDurumHesapla(tarih, esikY, esikAz);
     const key = `${arac.id}-${field}`;
 
     if (editKey === key) {
