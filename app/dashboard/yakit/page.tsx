@@ -144,6 +144,12 @@ type TabloSatir = {
   hareket: Hareket;
   fark: number | null;
   anlikOrt: number | null;
+  // Anlık ortalamanın hesaplandığı FULL→FULL aralığı (28.11.2026). Tabloda görünen
+  // "Fark" bir önceki KAYDA göredir; anlık ortalama ise bir önceki DEPO FULL'a göre.
+  // İkisi farklı olabildiği için aralık ayrıca gösteriliyor, yoksa rakam havada kalır.
+  aralikLt?: number | null;        // aralıkta verilen toplam litre
+  aralikFark?: number | null;      // aralıktaki km/saat farkı
+  aralikDolum?: number | null;     // aralıktaki ARA dolum sayısı (full olmayan)
   genelOrt: number | null;
   depoStok: number | null;
   disYakit?: boolean;    // efektif dış-yakıt (otomatik fark>menzil veya manuel) → D rozeti + ortalamadan dışlanır
@@ -515,6 +521,66 @@ function YakitPageContent() {
   // Aracın genel kümülatif ortalaması hesaplama
   // (ilk kayıt hariç tüketilen lt) / (son km - ilk km)
   // Filtreler uygulanır: santiye + tarih aralığı (kullanıcı belirli bir kapsam istiyor)
+  // FULL→FULL TÜKETİM ARALIKLARI (28.11.2026 düzeltmesi).
+  //
+  // ÖNCEKİ HESAP YANLIŞTI: anlık ortalama, o dolumun litresi ÷ bir önceki KAYDA olan
+  // fark idi. Araya full olmayan dolumlar girdiğinde depo yarı boş başlıyor, yani o
+  // litre sadece son aralıkta değil, önceki aralıklarda da yakılmış oluyor. Ölçüm:
+  //   34-00-24-7675 · 18.11.2026 → 97 L ÷ 2 s = 48,50 L/s (genelin 6,48 katı, kırmızı)
+  //   doğrusu (14+37+97) ÷ 22 s = 6,73 L/s — genel ortalamanın (7,48) ALTINDA.
+  //   60-00-10-0011 · 20.10.2026 → 301 ÷ 3 = 100,33 L/s; doğrusu 788 ÷ 38 = 20,74.
+  // Yani uyarılar gerçek değildi; sahadaki kişi yok yere yakıt kaçağı arıyordu.
+  //
+  // Doğru yöntem (full-to-full): iki DEPO FULL dolumu arasında verilen BÜTÜN litreler
+  // ÷ o iki full arasındaki km/saat farkı. Depo iki uçta da dolu olduğu için aradaki
+  // tüketim tam olarak verilen yakıt kadardır.
+  //
+  // Önünde full dolum OLMAYAN kayıtta anlık ortalama hesaplanmaz: deponun başlangıç
+  // seviyesi bilinmediği için üretilecek her rakam uydurma olur.
+  const fullAralikMap = useMemo(() => {
+    const m = new Map<string, { toplamLt: number; fark: number; araDolum: number; disVar: boolean }>();
+    const byArac = new Map<string, AracYakit[]>();
+    for (const y of yakitKayitlari) {
+      if (filtreSantiyeId && y.santiye_id !== filtreSantiyeId) continue;
+      if ((y.km_saat ?? 0) <= 0) continue;   // sayaç girilmemiş kayıt aralığı bozar
+      if (!byArac.has(y.arac_id)) byArac.set(y.arac_id, []);
+      byArac.get(y.arac_id)!.push(y);
+    }
+    for (const [aracId, kayitlar] of byArac) {
+      const sirali = [...kayitlar].sort((a, b) => hareketKey(a).localeCompare(hareketKey(b)));
+      const menzil = aracMap.get(aracId)?.depo_menzil ?? 0;
+      let sonFull = -1;          // en son full dolumun indeksi
+      let biriken = 0;           // sonFull'dan beri verilen litre
+      let araDolum = 0;          // sonFull'dan beri full OLMAYAN dolum sayısı
+      let disVar = false;        // aralıkta dış yakıt var mı
+      for (let i = 0; i < sirali.length; i++) {
+        const k = sirali[i];
+        const oncekiFark = i > 0 ? k.km_saat - sirali[i - 1].km_saat : 0;
+        // Dış yakıt: manuel (true/false) öncelikli, null ise otomatik (fark > menzil).
+        const dis = k.dis_yakit_oncesi === true ? true
+          : k.dis_yakit_oncesi === false ? false
+          : (menzil > 0 && oncekiFark > 0 && oncekiFark > menzil);
+        if (sonFull >= 0) {
+          biriken += k.miktar_lt;
+          if (dis) disVar = true;
+          if (!k.depo_full) araDolum++;
+        }
+        if (k.depo_full) {
+          if (sonFull >= 0) {
+            m.set(k.id, {
+              toplamLt: biriken,
+              fark: k.km_saat - sirali[sonFull].km_saat,
+              araDolum,
+              disVar,
+            });
+          }
+          sonFull = i; biriken = 0; araDolum = 0; disVar = false;
+        }
+      }
+    }
+    return m;
+  }, [yakitKayitlari, aracMap, filtreSantiyeId]);
+
   const aracGenelOrt = useMemo(() => {
     const m = new Map<string, number>();
     // GENEL/KÜMÜLATİF ortalama: TÜM zaman (tarih filtresi UYGULANMAZ — yoksa "genel" olmaz).
@@ -870,11 +936,18 @@ function YakitPageContent() {
               satir.disSupheli = aracFark > 0 && aracFark <= menzil;
             }
           }
-          // Anlık ortalama SADECE depo_full=true VE dış-yakıt DEĞİLSE hesaplanır.
-          if (fark > 0 && h.depo_full && !disYakit) {
+          // ANLIK ORTALAMA: bu dolumun litresi ÷ bir önceki kayda fark DEĞİL (öyleydi,
+          // yanlıştı — bkz. fullAralikMap). Bir önceki DEPO FULL'dan bu doluma kadar
+          // verilen bütün litreler ÷ o aralığın farkı. Aralıkta dış yakıt varsa hiç
+          // hesaplanmaz; önünde full dolum yoksa da hesaplanmaz (depo seviyesi bilinmez).
+          const aralik = h.depo_full ? fullAralikMap.get(h.id) : undefined;
+          if (aralik && aralik.fark > 0 && !aralik.disVar) {
             // Sayaç tipi km ise lt/100km, saat ise lt/saat
             const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
-            satir.anlikOrt = (h.miktar_lt / fark) * carpan;
+            satir.anlikOrt = (aralik.toplamLt / aralik.fark) * carpan;
+            satir.aralikLt = aralik.toplamLt;
+            satir.aralikFark = aralik.fark;
+            satir.aralikDolum = aralik.araDolum;
           }
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
@@ -975,7 +1048,7 @@ function YakitPageContent() {
     return sonuc;
   }, [
     tumHareketler, filtreSantiyeId, filtreBaslangic, filtreBitis, arama,
-    aracMap, santiyeMap, stokMap, limitMap, aracGenelOrt, kullaniciMap,
+    aracMap, santiyeMap, stokMap, limitMap, aracGenelOrt, fullAralikMap, kullaniciMap,
     isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, kullanici, sadeceLimitDisi,
   ]);
 
@@ -2162,10 +2235,22 @@ function YakitPageContent() {
                             <span className={renkClass}>
                               {formatSayi(s.anlikOrt, 2)}{birimEki}
                             </span>
+                            {/* Araya full OLMAYAN dolum girdiyse anlık ortalama bu satırın
+                                litre/farkından ÇIKMAZ: bir önceki depo full'dan beri verilen
+                                bütün litreler kullanılır. Hangi aralık olduğu yazılmazsa
+                                kullanıcı rakamı satırdaki sayılarla doğrulayamaz. */}
+                            {(s.aralikDolum ?? 0) > 0 && s.aralikLt != null && s.aralikFark != null && (
+                              <span
+                                className="text-[9px] text-gray-400"
+                                title={`Bu dolumdan önce depo full YAPILMAMIŞ ${s.aralikDolum} dolum var. Tüketim iki "Depo Full" arası hesaplanır: aradaki bütün yakıt (${formatMiktar(s.aralikLt)} Lt) ÷ o aralığın farkı (${formatSayi(s.aralikFark, 0)}). Sadece bu satırın litresini bu satırın farkına bölmek, depo yarı boş başladığı için gerçekte olmayan bir yükseklik gösterirdi.`}
+                              >
+                                full→full · {formatMiktar(s.aralikLt)} Lt / {formatSayi(s.aralikFark, 0)}
+                              </span>
+                            )}
                             {limitYon && kat !== null && !s.baglantiliAnomali && (
                               <span
                                 className={`text-[9px] flex items-center gap-0.5 ${altRenk}`}
-                                title={`Anlık, genel ortalamanın ${kat.toFixed(2)} katı (Limit çarpanı: alt ${s.limitAlt} – üst ${s.limitUst})`}
+                                title={`Anlık, genel ortalamanın ${kat.toFixed(2)} katı (Limit çarpanı: alt ${s.limitAlt} – üst ${s.limitUst}).${(s.aralikDolum ?? 0) > 0 ? ` Anlık ortalama iki "Depo Full" arası hesaplandı: ${formatMiktar(s.aralikLt ?? 0)} Lt / ${formatSayi(s.aralikFark ?? 0, 0)} fark, arada ${s.aralikDolum} full olmayan dolum var.` : ""}`}
                               >
                                 <AlertTriangle size={8} />
                                 {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit aşıldı"} · {kat.toFixed(2)} kat
